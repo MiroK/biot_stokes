@@ -4,12 +4,12 @@ from block import block_mat, block_vec, block_bc
 # from petsc4py import PETSc
 from dolfin import *
 from xii import *
-import itertools
+import itertools, os
 import hsmg
 
 
 class AmbartsumyanMMSDomain(object):
-    def __init__(self, N):
+    def __init__(self, N, elm_order=2):
 
         _mesh = RectangleMesh(Point(0, -1), Point(1, 1), N, 2 * N)
 
@@ -31,6 +31,7 @@ class AmbartsumyanMMSDomain(object):
         self.interface = EmbeddedMesh(surfaces, 1)
 
         self.mark_boundary()
+        self.elm_order
 
     @property
     def dimension(self):
@@ -101,17 +102,39 @@ class BiotStokesProblem(object):
         bc_dict[subdomain_id] = value
 
     def make_function_spaces(self):
-        # biot
-        Vp = FunctionSpace(self.domain.porous_domain, "RT", 2)
-        Qp = FunctionSpace(self.domain.porous_domain, "DG", 1)
-        U = VectorFunctionSpace(self.domain.porous_domain, "CG", 2)
 
-        # stokes
-        Vf = VectorFunctionSpace(self.domain.stokes_domain, "CG", 2)
-        Qf = FunctionSpace(self.domain.stokes_domain, "CG", 1)
+        if self.elm_order == 2:
+            # biot
+            Vp = FunctionSpace(self.domain.porous_domain, "RT", 2)
+            Qp = FunctionSpace(self.domain.porous_domain, "DG", 1)
+            U = VectorFunctionSpace(self.domain.porous_domain, "CG", 2)
 
-        # lagrange multiplier
-        X = FunctionSpace(self.domain.interface, "DG", 1)
+            # stokes
+            Vf = VectorFunctionSpace(self.domain.stokes_domain, "CG", 2)
+            Qf = FunctionSpace(self.domain.stokes_domain, "CG", 1)
+
+            # lagrange multiplier
+            X = FunctionSpace(self.domain.interface, "DG", 1)
+        # Fallback 1
+        else:
+            # biot
+            Vp = FunctionSpace(self.domain.porous_domain, "RT", 1)
+            Qp = FunctionSpace(self.domain.porous_domain, "DG", 0)
+            U = VectorFunctionSpace(self.domain.porous_domain, "CG", 1)
+
+            cell = self.domain.stokes_domain.ufl_cell()
+            # stokes
+            P1 = VectorElement('Lagrange', cell, 1)
+            B3 = VectorElement('Bubble', cell, 3)
+            MiniElm = P1*B3
+            
+            Vf = FunctionSpace(self.domain.stokes_domain, MiniElm)
+            Qf = FunctionSpace(self.domain.stokes_domain, "CG", 1)
+
+            # lagrange multiplier
+            X = FunctionSpace(self.domain.interface, "DG", 0)
+
+
 
         self.W = [Vp, Qp, U, Vf, Qf, X]
         print("dofs: {}".format(sum([sp.dim() for sp in self.W])))
@@ -582,10 +605,10 @@ exact_fs = map(File, map(in_dir, ["up_e.pvd", "pp_e.pvd",
 
 
 ## now solve
-N0 = 80
+N0 = 8
 
 errs = {}
-for N in [N0, 2*N0]:
+for N in [N0, 2*N0, 4*N0, 8*N0, 16*N0]:
     problem = AmbartsumyanMMSProblem(N)
     solution = problem.get_solver()
 
@@ -621,9 +644,9 @@ for N in [N0, 2*N0]:
         # print s
     errs[N] = err_N
 
-
-print "convergence rate going from N={} to N={}:".format(N0, 2*N0)
-for name in names[:5]:
-    import math
-    k = math.log(errs[N0][name]/errs[2*N0][name])/math.log(2)
-    print "{}: {:.5f}".format(name, k)
+import math
+for n in (N0, 2*N0, 4*N0, 8*N0):
+    print "convergence rate going from N={} to N={}:".format(n, 2*n)
+    for name in names[:5]:
+        k = math.log(errs[n][name]/errs[2*n][name])/math.log(2)
+        print "{}: {:.5f}".format(name, k)
