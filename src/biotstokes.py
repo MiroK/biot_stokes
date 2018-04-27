@@ -9,7 +9,7 @@ import hsmg
 
 
 class AmbartsumyanMMSDomain(object):
-    def __init__(self, N, elm_order=2):
+    def __init__(self, N):
 
         _mesh = RectangleMesh(Point(0, -1), Point(1, 1), N, 2 * N)
 
@@ -31,7 +31,6 @@ class AmbartsumyanMMSDomain(object):
         self.interface = EmbeddedMesh(surfaces, 1)
 
         self.mark_boundary()
-        self.elm_order
 
     @property
     def dimension(self):
@@ -61,6 +60,7 @@ class BiotStokesProblem(object):
     @staticmethod
     def default_params():
         return {
+            "elm_order": 2,
             "dt": 1.,
             "alpha": 1.,
             "s0": 1.,
@@ -76,7 +76,6 @@ class BiotStokesProblem(object):
         d = BiotStokesProblem.default_params()
         d.update(param_dict)
         self.params = d
-
         
         self.domain = domain
 
@@ -102,8 +101,7 @@ class BiotStokesProblem(object):
         bc_dict[subdomain_id] = value
 
     def make_function_spaces(self):
-
-        if self.elm_order == 2:
+        if self.params['elm_order'] == 2:
             # biot
             Vp = FunctionSpace(self.domain.porous_domain, "RT", 2)
             Qp = FunctionSpace(self.domain.porous_domain, "DG", 1)
@@ -126,7 +124,7 @@ class BiotStokesProblem(object):
             # stokes
             P1 = VectorElement('Lagrange', cell, 1)
             B3 = VectorElement('Bubble', cell, 3)
-            MiniElm = P1*B3
+            MiniElm = P1 + B3
             
             Vf = FunctionSpace(self.domain.stokes_domain, MiniElm)
             Qf = FunctionSpace(self.domain.stokes_domain, "CG", 1)
