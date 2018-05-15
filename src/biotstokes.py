@@ -60,7 +60,6 @@ class BiotStokesProblem(object):
     @staticmethod
     def default_params():
         return {
-            "elm_order": 2,
             "dt": 1.,
             "alpha": 1.,
             "s0": 1.,
@@ -101,38 +100,32 @@ class BiotStokesProblem(object):
         bc_dict[subdomain_id] = value
 
     def make_function_spaces(self):
-        if self.params['elm_order'] == 2:
-            # biot
-            Vp = FunctionSpace(self.domain.porous_domain, "RT", 2)
-            Qp = FunctionSpace(self.domain.porous_domain, "DG", 1)
-            U = VectorFunctionSpace(self.domain.porous_domain, "CG", 2)
+        # # biot
+        # Vp = FunctionSpace(self.domain.porous_domain, "RT", 2)
+        # Qp = FunctionSpace(self.domain.porous_domain, "DG", 1)
+        # U = VectorFunctionSpace(self.domain.porous_domain, "CG", 2)
 
-            # stokes
-            Vf = VectorFunctionSpace(self.domain.stokes_domain, "CG", 2)
-            Qf = FunctionSpace(self.domain.stokes_domain, "CG", 1)
+        # # stokes
+        # Vf = VectorFunctionSpace(self.domain.stokes_domain, "CG", 2)
+        # Qf = FunctionSpace(self.domain.stokes_domain, "CG", 1)
 
-            # lagrange multiplier
-            X = FunctionSpace(self.domain.interface, "DG", 1)
-        # Fallback 1
-        else:
-            # biot
-            Vp = FunctionSpace(self.domain.porous_domain, "RT", 1)
-            Qp = FunctionSpace(self.domain.porous_domain, "DG", 0)
-            U = VectorFunctionSpace(self.domain.porous_domain, "CG", 1)
+        # # lagrange multiplier
+        # X = FunctionSpace(self.domain.interface, "DG", 1)
 
-            cell = self.domain.stokes_domain.ufl_cell()
-            # stokes
-            P1 = VectorElement('Lagrange', cell, 1)
-            B3 = VectorElement('Bubble', cell, 3)
-            MiniElm = P1 + B3
-            
-            Vf = FunctionSpace(self.domain.stokes_domain, MiniElm)
-            Qf = FunctionSpace(self.domain.stokes_domain, "CG", 1)
+        # # biot
+        Vp = FunctionSpace(self.domain.porous_domain, "RT", 1)
+        Qp = FunctionSpace(self.domain.porous_domain, "DG", 0)
+        U = VectorFunctionSpace(self.domain.porous_domain, "CG", 1)
 
-            # lagrange multiplier
-            X = FunctionSpace(self.domain.interface, "DG", 0)
+        # stokes
+        MiniScalar = FiniteElement('Lagrange', triangle, 1) + \
+                     FiniteElement('Bubble', triangle, 3)
+        MiniElm = VectorElement(MiniScalar, 2)
+        Vf = FunctionSpace(self.domain.stokes_domain, MiniElm)
+        Qf = FunctionSpace(self.domain.stokes_domain, "CG", 1)
 
-
+        # lagrange multiplier
+        X = FunctionSpace(self.domain.interface, "DG", 0)
 
         self.W = [Vp, Qp, U, Vf, Qf, X]
         print("dofs: {}".format(sum([sp.dim() for sp in self.W])))
@@ -270,15 +263,34 @@ class BiotStokesProblem(object):
 
 
         Co = Constant
-        a = [
-            [adp, bpvp, 0, 0, 0, npvp],
-            [bpvpt, -Co(s0/dt)*mpp, Co(alpha/dt)*bpept, 0, 0, 0],
-            [0, Constant(alpha/dt)*bpep, Co(1/dt)*(aep + Co(1/dt)*sepdp),
-             -Co(1/dt)*sepuf, 0, Co(1/dt)*npep],
-            [0, 0, Co(-1/dt)*svfdp, af + svfuf, bf, nfvf],
-            [0, 0, 0, bft, 0, 0],
-            [npvpt, 0, Co(1/dt)*npept, nfvft, 0, 0],
-        ]
+        a = [[0]*len(self.W) for _ in range(len(self.W))]
+
+        #    [adp, bpvp, 0, 0, 0, npvp],
+        a[0][0] = adp
+        a[0][1] = bpvp
+        a[0][5] = npvp
+        #    [bpvpt, -Co(s0/dt)*mpp, Co(alpha/dt)*bpept, 0, 0, 0],
+        
+        a[1][0] = bpvpt
+        a[1][1] = -Co(s0/dt)*mpp
+        a[1][2] = Co(alpha/dt)*bpept
+        #    [0, Constant(alpha/dt)*bpep, Co(1/dt)*(aep + Co(1/dt)*sepdp),
+        # -Co(1/dt)*sepuf, 0, Co(1/dt)*npep],
+        a[2][1] = Constant(alpha/dt)*bpep
+        a[2][2] = Co(1/dt)*(aep + Co(1/dt)*sepdp)
+        a[2][3] = -Co(1/dt)*sepuf
+        a[2][5] = Co(1/dt)*npep
+        # [0, 0, Co(-1/dt)*svfdp, af + svfuf, bf, nfvf],
+        a[3][2] = Co(-1/dt)*svfdp
+        a[3][3] = af + svfuf
+        a[3][4] = bf
+        a[3][5] = nfvf
+        # [0, 0, 0, bft, 0, 0],
+        a[4][3] = bft
+        # [npvpt, 0, Co(1/dt)*npept, nfvft, 0, 0],
+        a[5][0] = npvpt
+        a[5][2] = Co(1/dt)*npept
+        a[5][3] = nfvft
 
         def compute_RHS(dp_prev, pp_prev, neumann_bcs, t):
             nf = FacetNormal(self.domain.stokes_domain)
@@ -472,6 +484,7 @@ class AmbartsumyanMMSProblem(BiotStokesProblem):
         params["alpha_BJS"] = 1
         params["s0"] = 1
         params["dt"] = 1E-4
+        params["elm_order"] = 2
         
 
         super(AmbartsumyanMMSProblem, self).__init__(domain, params)
@@ -613,9 +626,9 @@ for N in [N0, 2*N0, 4*N0, 8*N0, 16*N0]:
     Nt = 2
     for i in range(Nt + 1):
         t, funcs = solution.next()
-        print "\r Done with timestep {:>3d} of {}".format(i, Nt),
-        save_to_file(funcs, solution_fs, names)
-        problem.save_exact_solution_to_file(t, exact_fs)
+    #     print "\r Done with timestep {:>3d} of {}".format(i, Nt),
+    #     save_to_file(funcs, solution_fs, names)
+    #     problem.save_exact_solution_to_file(t, exact_fs)
 
 
     # print errors at final time step
@@ -629,9 +642,9 @@ for N in [N0, 2*N0, 4*N0, 8*N0, 16*N0]:
     ):
         expr.t = t
         error = errornorm(
-                    expr, func,
-                    norm_type=normtype, degree_rise=3,
-                    mesh=func.function_space().mesh()
+                   expr, func,
+                   norm_type=normtype, degree_rise=3,
+                   mesh=func.function_space().mesh()
                 )
         err_N[name] = error
         s = (
@@ -639,7 +652,7 @@ for N in [N0, 2*N0, 4*N0, 8*N0, 16*N0]:
                 name, error, normtype
             )
         )
-        # print s
+        print s
     errs[N] = err_N
 
 import math

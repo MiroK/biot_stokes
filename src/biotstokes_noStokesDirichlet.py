@@ -377,8 +377,15 @@ class BiotStokesProblem(object):
             uf_e.t = t
             pf_e.t = t
 
-            uf_e = project(uf_e, self.W[3])
-            pf_e = interpolate(pf_e, self.W[4])
+            Wf = VectorFunctionSpace(self.W[3].mesh(),
+                                     'Lagrange',
+                                     3)
+            uf_e = project(uf_e, Wf)
+
+            Wp = FunctionSpace(self.W[4].mesh(),
+                               'Lagrange',
+                               3)            
+            pf_e = interpolate(pf_e, Wp)
 
             # for subdomain_num in self._dirichlet_bcs["stokes"]
             L_stokes_neumann = 0
